@@ -3,8 +3,10 @@
 namespace Pterodactyl\Repositories\Wings;
 
 use Illuminate\Support\Arr;
+use Illuminate\Support\Str;
 use Webmozart\Assert\Assert;
 use Pterodactyl\Models\Server;
+use Pterodactyl\Helpers\TextHighlighter;
 use Psr\Http\Message\ResponseInterface;
 use GuzzleHttp\Exception\ClientException;
 use GuzzleHttp\Exception\TransferException;
@@ -93,6 +95,63 @@ class DaemonFileRepository extends DaemonRepository
         }
 
         return json_decode($response->getBody(), true);
+    }
+
+    /**
+     * Search through files for a given query.
+     *
+     * @param string $path
+     * @param string $query
+     * @return array
+     */
+    public function searchFiles(string $path, string $query): array
+    {
+        $results = [];
+
+        $files = $this->getAllFilesRecursive($path);
+
+        foreach ($files as $file) {
+            try {
+                $content = $this->getContent($file, 1024 * 1024); 
+
+                $lines = explode("\n", $content);
+                foreach ($lines as $number => $line) {
+                    if (Str::contains(Str::lower($line), Str::lower($query))) {
+                        $results[] = [
+                            'file' => $file,
+                            'line' => $number + 1,
+                            'snippet' => TextHighlighter::highlight($line, $query),
+                        ];
+                    }
+                }
+            } catch (\Exception $ex) {
+                // Skip files that cannot be read
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * Recursively collect file paths.
+     */
+    protected function getAllFilesRecursive(string $path): array
+    {
+        $allFiles = [];
+        $entries = $this->getDirectory($path);
+
+        foreach ($entries as $entry) {
+            if ($entry['directory']) {
+                $allFiles = array_merge(
+                    $allFiles,
+                    $this->getAllFilesRecursive(rtrim($path, '/') . '/' . $entry['name'])
+                );
+            } else {
+                $allFiles[] = rtrim($path, '/') . '/' . $entry['name'];
+            }
+        }
+
+        return $allFiles;
     }
 
     /**
