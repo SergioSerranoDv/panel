@@ -10,6 +10,7 @@ use Pterodactyl\Facades\Activity;
 use Pterodactyl\Services\Nodes\NodeJWTService;
 use Pterodactyl\Repositories\Wings\DaemonFileRepository;
 use Pterodactyl\Transformers\Api\Client\FileObjectTransformer;
+use Pterodactyl\Transformers\Api\Client\SearchResultTransformer;
 use Pterodactyl\Http\Controllers\Api\Client\ClientApiController;
 use Pterodactyl\Http\Requests\Api\Client\Servers\Files\CopyFileRequest;
 use Pterodactyl\Http\Requests\Api\Client\Servers\Files\PullFileRequest;
@@ -50,6 +51,24 @@ class FileController extends ClientApiController
             ->transformWith($this->getTransformer(FileObjectTransformer::class))
             ->toArray();
     }
+    
+    /**
+     * Returns a list of search results for the given query.
+     *
+     * @throws \Pterodactyl\Exceptions\Http\Connection\DaemonConnectionException
+     */
+    
+    public function search(ListFilesRequest $request, Server $server): array
+    {
+        $contents = $this->fileRepository
+            ->setServer($server)
+            ->searchFiles('/', $request->get('query')); 
+
+        return $this->fractal->collection($contents)
+            ->transformWith($this->getTransformer(SearchResultTransformer::class))
+            ->toArray();
+    }
+
 
     /**
      * Return the contents of a specified file for the user.
