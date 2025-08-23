@@ -19,6 +19,7 @@ import UploadButton from '@/components/server/files/UploadButton';
 import ServerContentBlock from '@/components/elements/ServerContentBlock';
 import { useStoreActions } from '@/state/hooks';
 import ErrorBoundary from '@/components/elements/ErrorBoundary';
+import SearchInput from '@/components/dashboard/search/SearchInput';
 import { FileActionCheckbox } from '@/components/server/files/SelectFileCheckbox';
 import { hashToPath } from '@/helpers';
 import style from './style.module.css';
@@ -75,6 +76,7 @@ export default () => {
                     />
                     <Can action={'file.create'}>
                         <div className={style.manager_actions}>
+                            <SearchInput />
                             <FileManagerStatus />
                             <NewDirectoryButton />
                             <UploadButton />
