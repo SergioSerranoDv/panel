@@ -5,6 +5,7 @@ import SpinnerOverlay from '@/components/elements/SpinnerOverlay';
 import saveFileContents from '@/api/server/files/saveFileContents';
 import FileManagerBreadcrumbs from '@/components/server/files/FileManagerBreadcrumbs';
 import { useHistory, useLocation, useParams } from 'react-router';
+import FileAnalyzerButton from '@/components/server/files/FileAnalyzerButton';
 import FileNameModal from '@/components/server/files/FileNameModal';
 import Can from '@/components/elements/Can';
 import FlashMessageRender from '@/components/FlashMessageRender';
@@ -152,6 +153,7 @@ export default () => {
                         </Button>
                     </Can>
                 )}
+                <FileAnalyzerButton />
             </div>
         </PageContentBlock>
     );
