@@ -5,9 +5,13 @@ import analyzeLogFile, { type AnalyzeFileResponse } from '@/api/server/files/ana
 export default function useFileAnalyzerSwr(filePath: string) {
     const uuid = ServerContext.useStoreState((state) => state.server.data!.uuid);
 
-    return useSWR<AnalyzeFileResponse>(filePath ? `${uuid}:file_analyze:${filePath}` : null, () => analyzeLogFile(uuid, filePath), {
-        revalidateOnFocus: false,
-        refreshInterval: 0,
-        shouldRetryOnError: false,
-    });
+    return useSWR<AnalyzeFileResponse>(
+        filePath ? `${uuid}:file_analyze:${filePath}` : null,
+        () => analyzeLogFile(uuid, filePath),
+        {
+            revalidateOnFocus: false,
+            refreshInterval: 0,
+            shouldRetryOnError: false,
+        }
+    );
 }
