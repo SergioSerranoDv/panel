@@ -76,6 +76,7 @@ Route::group([
 
     Route::group(['prefix' => '/files'], function () {
         Route::get('/list', [Client\Servers\FileController::class, 'directory']);
+        Route::get('/analyze', [Client\Servers\FileController::class, 'analyzeLog']);
         Route::get('/search', [Client\Servers\FileController::class, 'search']);
         Route::get('/contents', [Client\Servers\FileController::class, 'contents']);
         Route::get('/download', [Client\Servers\FileController::class, 'download']);
