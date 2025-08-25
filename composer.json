@@ -24,6 +24,7 @@
         "ext-pdo_mysql": "*",
         "ext-posix": "*",
         "ext-zip": "*",
+        "aternos/codex-minecraft": "^3.8",
         "aws/aws-sdk-php": "~3.324.7",
         "guzzlehttp/guzzle": "~7.9.2",
         "hashids/hashids": "~5.0.2",
