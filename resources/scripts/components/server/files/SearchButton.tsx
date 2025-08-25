@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import Button from '@/components/elements/Button';
-import SearchFileModal from '@/components/dashboard/search/SearchFilesModal';
+import SearchFileModal from '@/components/dashboard/search/SearchFileModal';
 
 export default () => {
     const [visible, setVisible] = useState<boolean>(false);
