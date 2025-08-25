@@ -6,12 +6,17 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\Response;
 use Pterodactyl\Models\Server;
 use Illuminate\Http\JsonResponse;
+use Aternos\Codex\Minecraft\Log\MinecraftLog;
+use Aternos\Codex\Log\File\StringLogFile;
+use Aternos\Codex\Minecraft\Detective\Detective;
+use Aternos\Codex\Minecraft\Analyser\MinecraftAnalyser;
 use Pterodactyl\Facades\Activity;
 use Pterodactyl\Services\Nodes\NodeJWTService;
 use Pterodactyl\Repositories\Wings\DaemonFileRepository;
 use Pterodactyl\Transformers\Api\Client\FileObjectTransformer;
 use Pterodactyl\Transformers\Api\Client\SearchResultTransformer;
 use Pterodactyl\Http\Controllers\Api\Client\ClientApiController;
+use Pterodactyl\Http\Requests\Api\Client\Servers\Files\AnalyzeFileRequest;
 use Pterodactyl\Http\Requests\Api\Client\Servers\Files\CopyFileRequest;
 use Pterodactyl\Http\Requests\Api\Client\Servers\Files\PullFileRequest;
 use Pterodactyl\Http\Requests\Api\Client\Servers\Files\ListFilesRequest;
@@ -50,6 +55,112 @@ class FileController extends ClientApiController
         return $this->fractal->collection($contents)
             ->transformWith($this->getTransformer(FileObjectTransformer::class))
             ->toArray();
+    }
+
+    /**
+     * Analyze a Minecraft log file for common issues and problems.
+     *
+     * @throws \Pterodactyl\Exceptions\Http\Connection\DaemonConnectionException
+     * @throws \Exception
+     */
+    public function analyzeLog(AnalyzeFileRequest $request, Server $server): JsonResponse
+    {
+        $filePath = $request->get('file');
+
+        if (!$this->isLogFile($filePath)) {
+            return new JsonResponse([
+                'error' => 'File is not a valid log file',
+            ], Response::HTTP_BAD_REQUEST);
+        }
+
+        try {
+            $content = $this->fileRepository
+                ->setServer($server)
+                ->getContent($filePath, config('pterodactyl.files.max_edit_size'));
+
+            if ($content === null) {
+                return new JsonResponse([
+                    'error' => 'Unable to read log file',
+                ], Response::HTTP_BAD_REQUEST);
+            }
+
+            $logFile = new StringLogFile($content);
+            $detective = new Detective();
+            $detective->setLogFile($logFile);
+            $log = $detective->detect($logFile);
+
+            if (!$log) {
+                return new JsonResponse([
+                    'error' => 'Unable to detect log format',
+                ], Response::HTTP_BAD_REQUEST);
+            }
+
+            $log->parse();
+            $analysis = $log->analyse();
+
+            $issues = [];
+            $information = [];
+
+
+            foreach ($analysis->getProblems() as $problem) {
+                $issues[] = [
+                    'type' => 'problem',
+                    'level' => $problem->getLevel(),
+                    'message' => $problem->getMessage(),
+                    'solution' => $problem->getSolution(),
+                    'time' => $problem->getEntry() ? $problem->getEntry()->getTime() : null,
+                ];
+            }
+            
+
+            foreach ($analysis->getInformation() as $info) {
+                $information[] = [
+                    'type' => 'information',
+                    'message' => $info->getMessage(),
+                    'value' => $info->getValue(),
+                ];
+            }
+
+            Activity::event('server:file.analyzed')
+                ->property('file', $filePath)
+                ->log();
+
+            $logType = is_object($log) ? (new \ReflectionClass($log))->getShortName() : 'Unknown';
+            $detectedFormat = is_object($log) ? get_class($log) : 'Unknown';
+
+            return new JsonResponse([
+                'object' => 'log_analysis',
+                'attributes' => [
+                    'file_path' => $filePath,
+                    'log_type' => $logType,
+                    'detected_format' => $detectedFormat,
+                    'total_issues' => count($issues),
+                    'total_information' => count($information),
+                    'issues' => $issues,
+                    'information' => $information,
+                    'analyzed_at' => now()->toISOString(),
+                ],
+            ], Response::HTTP_OK);
+        
+        } catch (\Exception $e) {
+            return new JsonResponse([
+                'error' => 'Analysis failed: ' . $e->getMessage(),
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * Check if a file is a log file.
+     */
+    private function isLogFile(string $filePath): bool
+    {
+        $logExtensions = ['log', 'txt'];
+        $logNames = ['latest.log', 'debug.log', 'server.log'];
+
+        $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+        $filename = strtolower(basename($filePath));
+
+        return in_array($extension, $logExtensions) || in_array($filename, $logNames);
     }
     
     /**
