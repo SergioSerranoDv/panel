@@ -18,6 +18,7 @@ use Pterodactyl\Exceptions\Http\Connection\DaemonConnectionException;
  * @method \Pterodactyl\Repositories\Wings\DaemonFileRepository setServer(\Pterodactyl\Models\Server $server)
  */
 class DaemonFileRepository extends DaemonRepository
+
 {
     /**
      * Return the contents of a given file.
@@ -97,35 +98,44 @@ class DaemonFileRepository extends DaemonRepository
         return json_decode($response->getBody(), true);
     }
 
-    /**
-     * Search through files for a given query.
+     /**
+     * Search through files for a given query with improved performance.
      *
      * @param string $path
      * @param string $query
+     * @param int $maxResults Maximum number of results to return (default: 100)
+     * @param array $fileExtensions File extensions to search (empty = all files)
+     * @param int $maxFileSize Maximum file size to search in bytes (default: 1MB)
      * @return array
      */
-    public function searchFiles(string $path, string $query): array
+    public function searchFiles(string $path, string $query, int $maxResults = 100, array $fileExtensions = [], int $maxFileSize = 1024 * 1024): array
     {
         $results = [];
+        $resultCount = 0;
+        
+        if (strlen(trim($query)) < 2) {
+            return $results;
+        }
 
-        $files = $this->getAllFilesRecursive($path);
+        foreach ($this->getFilesRecursiveGenerator($path, $fileExtensions, $maxFileSize) as $file) {
+            if ($resultCount >= $maxResults) {
+                break;
+            }
 
-        foreach ($files as $file) {
             try {
-                $content = $this->getContent($file, 1024 * 1024); 
-
-                $lines = explode("\n", $content);
-                foreach ($lines as $number => $line) {
-                    if (Str::contains(Str::lower($line), Str::lower($query))) {
-                        $results[] = [
-                            'file' => $file,
-                            'line' => $number + 1,
-                            'snippet' => TextHighlighter::highlight($line, $query),
-                        ];
+                $matches = $this->searchInFile($file, $query, $maxFileSize);
+                
+                foreach ($matches as $match) {
+                    $results[] = $match;
+                    $resultCount++;
+                    
+                    if ($resultCount >= $maxResults) {
+                        break 2;
                     }
                 }
             } catch (\Exception $ex) {
                 // Skip files that cannot be read
+                continue;
             }
         }
 
@@ -133,25 +143,79 @@ class DaemonFileRepository extends DaemonRepository
     }
 
     /**
-     * Recursively collect file paths.
+     * Search within a single file for matches.
+     * 
+     * @param string $filePath
+     * @param string $query
+     * @param int $maxFileSize
+     * @return array
      */
-    protected function getAllFilesRecursive(string $path): array
+    protected function searchInFile(string $filePath, string $query, int $maxFileSize): array
     {
-        $allFiles = [];
-        $entries = $this->getDirectory($path);
+        $matches = [];
+        
+        try {
+            $content = $this->getContent($filePath, $maxFileSize);
+            
+            $queryLower = Str::lower($query);
+            $lines = explode("\n", $content);
+            
+            foreach ($lines as $lineNumber => $line) {
+                if (Str::contains(Str::lower($line), $queryLower)) {
+                    $matches[] = [
+                        'file' => $filePath,
+                        'line' => $lineNumber + 1,
+                        'snippet' => TextHighlighter::highlight($line, $query),
+                    ];
+                }
+            }
+        } catch (\Exception $ex) {
+            // File couldn't be read, return empty matches
+        }
+        
+        return $matches;
+    }
+
+    /**
+     * Generator to recursively get files from a directory.
+     *
+     * @param string $path
+     * @param array $allowedExtensions
+     * @param int $maxFileSize
+     * @return \Generator
+     */
+    protected function getFilesRecursiveGenerator(string $path, array $allowedExtensions = [], int $maxFileSize = 1024 * 1024): \Generator
+    {
+        try {
+            $entries = $this->getDirectory($path);
+        } catch (\Exception $ex) {
+            return;
+        }
 
         foreach ($entries as $entry) {
             if ($entry['directory']) {
-                $allFiles = array_merge(
-                    $allFiles,
-                    $this->getAllFilesRecursive(rtrim($path, '/') . '/' . $entry['name'])
+                yield from $this->getFilesRecursiveGenerator(
+                    rtrim($path, '/') . '/' . $entry['name'], 
+                    $allowedExtensions, 
+                    $maxFileSize
                 );
             } else {
-                $allFiles[] = rtrim($path, '/') . '/' . $entry['name'];
+                $filePath = rtrim($path, '/') . '/' . $entry['name'];
+                
+                if (!empty($allowedExtensions)) {
+                    $extension = strtolower(pathinfo($entry['name'], PATHINFO_EXTENSION));
+                    if (!in_array($extension, $allowedExtensions)) {
+                        continue;
+                    }
+                }
+                
+                if (isset($entry['size']) && $entry['size'] > $maxFileSize) {
+                    continue;
+                }
+                
+                yield $filePath;
             }
         }
-
-        return $allFiles;
     }
 
     /**
