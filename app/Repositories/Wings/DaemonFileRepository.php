@@ -99,7 +99,7 @@ class DaemonFileRepository extends DaemonRepository
     }
 
      /**
-     * Search through files for a given query with improved performance.
+     * Search through files for a given query 
      *
      * @param string $path
      * @param string $query
