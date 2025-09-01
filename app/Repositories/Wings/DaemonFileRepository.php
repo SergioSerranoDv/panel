@@ -103,119 +103,29 @@ class DaemonFileRepository extends DaemonRepository
      *
      * @param string $path
      * @param string $query
-     * @param int $maxResults Maximum number of results to return (default: 100)
-     * @param array $fileExtensions File extensions to search (empty = all files)
-     * @param int $maxFileSize Maximum file size to search in bytes (default: 1MB)
      * @return array
      */
-    public function searchFiles(string $path, string $query, int $maxResults = 100, array $fileExtensions = [], int $maxFileSize = 1024 * 1024): array
+    public function searchFiles(string $query): array
     {
-        $results = [];
-        $resultCount = 0;
-        
-        if (strlen(trim($query)) < 2) {
-            return $results;
-        }
+       
+        Assert::isInstanceOf($this->server, Server::class);
 
-        foreach ($this->getFilesRecursiveGenerator($path, $fileExtensions, $maxFileSize) as $file) {
-            if ($resultCount >= $maxResults) {
-                break;
-            }
-
-            try {
-                $matches = $this->searchInFile($file, $query, $maxFileSize);
-                
-                foreach ($matches as $match) {
-                    $results[] = $match;
-                    $resultCount++;
-                    
-                    if ($resultCount >= $maxResults) {
-                        break 2;
-                    }
-                }
-            } catch (\Exception $ex) {
-                // Skip files that cannot be read
-                continue;
-            }
-        }
-
-        return $results;
-    }
-
-    /**
-     * Search within a single file for matches.
-     * 
-     * @param string $filePath
-     * @param string $query
-     * @param int $maxFileSize
-     * @return array
-     */
-    protected function searchInFile(string $filePath, string $query, int $maxFileSize): array
-    {
-        $matches = [];
-        
         try {
-            $content = $this->getContent($filePath, $maxFileSize);
-            
-            $queryLower = Str::lower($query);
-            $lines = explode("\n", $content);
-            
-            foreach ($lines as $lineNumber => $line) {
-                if (Str::contains(Str::lower($line), $queryLower)) {
-                    $matches[] = [
-                        'file' => $filePath,
-                        'line' => $lineNumber + 1,
-                        'snippet' => TextHighlighter::highlight($line, $query),
-                    ];
-                }
-            }
-        } catch (\Exception $ex) {
-            // File couldn't be read, return empty matches
-        }
-        
-        return $matches;
-    }
-
-    /**
-     * Generator to recursively get files from a directory.
-     *
-     * @param string $path
-     * @param array $allowedExtensions
-     * @param int $maxFileSize
-     * @return \Generator
-     */
-    protected function getFilesRecursiveGenerator(string $path, array $allowedExtensions = [], int $maxFileSize = 1024 * 1024): \Generator
-    {
-        try {
-            $entries = $this->getDirectory($path);
-        } catch (\Exception $ex) {
-            return;
+            $response = $this->getHttpClient()->post(
+                sprintf('/api/servers/%s/files/search', $this->server->uuid),
+                [
+                    'json' => [
+                        'query' => $query,
+                        'max_results' => 100,
+                        'case_insensitive' => false
+                    ],
+                ]
+            );
+        } catch (ClientException|TransferException $exception) {
+            throw new DaemonConnectionException($exception);
         }
 
-        foreach ($entries as $entry) {
-            if ($entry['directory']) {
-                yield from $this->getFilesRecursiveGenerator(
-                    rtrim($path, '/') . '/' . $entry['name'], 
-                    $allowedExtensions, 
-                    $maxFileSize
-                );
-            } else {
-                $filePath = rtrim($path, '/') . '/' . $entry['name'];
-                
-                if (!empty($allowedExtensions)) {
-                    $extension = strtolower(pathinfo($entry['name'], PATHINFO_EXTENSION));
-                    if (!in_array($extension, $allowedExtensions)) {
-                        continue;
-                    }
-                }
-                
-                if (isset($entry['size']) && $entry['size'] > $maxFileSize) {
-                    continue;
-                }
-                
-                yield $filePath;
-            }
-        }
+        return json_decode($response->getBody(), true);
     }
 
     /**
