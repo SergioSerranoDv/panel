@@ -20,6 +20,7 @@ use Pterodactyl\Http\Requests\Api\Client\Servers\Files\DeleteFileRequest;
 use Pterodactyl\Http\Requests\Api\Client\Servers\Files\RenameFileRequest;
 use Pterodactyl\Http\Requests\Api\Client\Servers\Files\CreateFolderRequest;
 use Pterodactyl\Http\Requests\Api\Client\Servers\Files\CompressFilesRequest;
+use Pterodactyl\Http\Requests\Api\Client\Servers\Files\SearchFilesRequest;
 use Pterodactyl\Http\Requests\Api\Client\Servers\Files\DecompressFilesRequest;
 use Pterodactyl\Http\Requests\Api\Client\Servers\Files\GetFileContentsRequest;
 use Pterodactyl\Http\Requests\Api\Client\Servers\Files\WriteFileContentRequest;
@@ -58,17 +59,16 @@ class FileController extends ClientApiController
      * @throws \Pterodactyl\Exceptions\Http\Connection\DaemonConnectionException
      */
     
-    public function search(ListFilesRequest $request, Server $server): array
+    public function search(SearchFilesRequest $request, Server $server): array
     {
         $contents = $this->fileRepository
             ->setServer($server)
-            ->searchFiles('/', $request->get('query')); 
+            ->searchFiles($request->input('query'));
 
         return $this->fractal->collection($contents)
-            ->transformWith($this->getTransformer(SearchResultTransformer::class))
-            ->toArray();
+        ->transformWith($this->getTransformer(SearchResultTransformer::class))
+        ->toArray();
     }
-
 
     /**
      * Return the contents of a specified file for the user.
